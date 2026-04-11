@@ -1,7 +1,23 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'friends_screen.dart';
+import 'package:flutter/foundation.dart';
+import 'profile_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int currentIndex = 0;
+
+  List posts = [];
+  bool isLoading = true;
+  String error = "";
 
   final List stories = const [
     "https://randomuser.me/api/portraits/men/1.jpg",
@@ -9,112 +25,256 @@ class HomeScreen extends StatelessWidget {
     "https://randomuser.me/api/portraits/men/3.jpg",
   ];
 
-  final List posts = const [
-    {
-      "name": "anh_tu",
-      "avatar": "https://randomuser.me/api/portraits/men/5.jpg",
-      "image": "https://picsum.photos/500/400?1",
-    },
-    {
-      "name": "giang",
-      "avatar": "https://randomuser.me/api/portraits/women/6.jpg",
-      "image": "https://picsum.photos/500/400?2",
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    fetchPosts();
+  }
+
+  Future fetchPosts() async {
+    try {
+      final url = kIsWeb
+          ? "http://localhost:3000/api/posts"
+          : "http://10.0.2.2:3000/api/posts";
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        setState(() {
+          posts = json.decode(response.body);
+          isLoading = false;
+        });
+      } else {
+        setState(() {
+          error = "Server lỗi: ${response.statusCode}";
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        error = "Không kết nối được backend";
+        isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
+    final isMobile = width < 800;
+    final textColor = isMobile ? Colors.white : Colors.black;
 
     /// 📱 MOBILE
-    if (width < 800) {
+    if (isMobile) {
       return Scaffold(
+        backgroundColor: Colors.black,
         appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
           title: const Text("TrustMe"),
-          actions: const [
-            Icon(Icons.favorite_border),
-            SizedBox(width: 10),
-            Icon(Icons.send),
+        ),
+        body: getScreen(textColor),
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: currentIndex,
+          backgroundColor: Colors.black,
+          selectedItemColor: Colors.white,
+          unselectedItemColor: Colors.grey,
+          type: BottomNavigationBarType.fixed,
+          onTap: (index) {
+            setState(() {
+              currentIndex = index;
+            });
+          },
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+            BottomNavigationBarItem(icon: Icon(Icons.people), label: "Friends"),
+            BottomNavigationBarItem(icon: Icon(Icons.add_box), label: "Post"),
+            BottomNavigationBarItem(icon: Icon(Icons.video_library), label: "Reels"),
+            BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
           ],
         ),
-        body: buildFeed(),
-        bottomNavigationBar: const BottomNav(),
       );
     }
 
-    ///  PC
+    /// 💻 PC
     return Scaffold(
       body: Row(
         children: [
-          const Sidebar(),
-          Expanded(child: Center(child: SizedBox(width: 500, child: buildFeed()))),
+          Sidebar(
+            currentIndex: currentIndex,
+            onTap: (index) {
+              setState(() {
+                currentIndex = index;
+              });
+            },
+          ),
+          Expanded(
+            child: Center(
+              child: SizedBox(
+                width: 500,
+                child: getScreen(textColor),
+              ),
+            ),
+          ),
           const SuggestPanel(),
         ],
       ),
     );
   }
 
-  /// ================= FEED =================
-  Widget buildFeed() {
-    return ListView(
-      children: [
-        /// STORY
-        SizedBox(
-          height: 100,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: stories.length,
-            itemBuilder: (context, index) {
-              return Padding(
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundImage: NetworkImage(stories[index]),
-                    ),
-                    const SizedBox(height: 5),
-                    const Text("user", style: TextStyle(fontSize: 12))
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
+  /// 🔥 CHUYỂN MÀN
+  Widget getScreen(Color textColor) {
+    switch (currentIndex) {
+      case 0:
+        return buildFeed(textColor);
+      case 1:
+        return const FriendsScreen();
+      case 4:
+        return const ProfileScreen();
+      default:
+        return buildFeed(textColor);
+    }
+  }
 
-        const Divider(),
+  /// ================= FEED =================
+  Widget buildFeed(Color textColor) {
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (error.isNotEmpty) {
+      return Center(
+        child: Text(error, style: const TextStyle(color: Colors.red)),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: posts.length + 1,
+      itemBuilder: (context, index) {
+        /// STORY
+        if (index == 0) {
+          return Column(
+            children: [
+              SizedBox(
+                height: 100,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: stories.length,
+                  itemBuilder: (context, i) {
+                    return Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Column(
+                        children: [
+                          CircleAvatar(
+                            radius: 30,
+                            backgroundColor: Colors.grey,
+                            child: ClipOval(
+                              child: Image.network(
+                                stories[i],
+                                width: 60,
+                                height: 60,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                const Icon(Icons.person),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            "user",
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: textColor,
+                            ),
+                          )
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const Divider(color: Colors.grey),
+            ],
+          );
+        }
 
         /// POSTS
-        ...posts.map((post) => Column(
+        final post = posts[index - 1];
+
+        return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ListTile(
               leading: CircleAvatar(
-                backgroundImage: NetworkImage(post["avatar"]!),
+                backgroundColor: Colors.grey,
+                child: Icon(Icons.person, color: textColor),
               ),
-              title: Text(post["name"]!),
+              title: Text(
+                post["name"] ?? "",
+                style: TextStyle(color: textColor),
+              ),
             ),
-            Image.network(post["image"]!),
-            const Padding(
-              padding: EdgeInsets.all(10),
+            Image.network(
+              post["image"] ?? "",
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                height: 200,
+                color: Colors.grey,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(10),
               child: Row(
                 children: [
-                  Icon(Icons.favorite_border),
-                  SizedBox(width: 10),
-                  Icon(Icons.comment),
-                  SizedBox(width: 10),
-                  Icon(Icons.send),
+                  Icon(Icons.favorite_border, color: textColor),
+                  const SizedBox(width: 10),
+                  Icon(Icons.comment, color: textColor),
+                  const SizedBox(width: 10),
+                  Icon(Icons.send, color: textColor),
                 ],
               ),
             ),
           ],
-        ))
-      ],
+        );
+      },
     );
   }
 }
+
+/// ===== SIDEBAR =====
 class Sidebar extends StatelessWidget {
-  const Sidebar({super.key});
+  final int currentIndex;
+  final Function(int) onTap;
+
+  const Sidebar({
+    super.key,
+    required this.currentIndex,
+    required this.onTap,
+  });
+
+  Widget buildItem(IconData icon, String title, int index) {
+    final isSelected = currentIndex == index;
+
+    return GestureDetector(
+      onTap: () => onTap(index),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, color: isSelected ? Colors.blue : Colors.grey),
+            const SizedBox(width: 10),
+            Text(
+              title,
+              style: TextStyle(
+                fontWeight:
+                isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,21 +283,22 @@ class Sidebar extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
-          Text("TrustMe", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          SizedBox(height: 30),
-          Row(children: [Icon(Icons.home), SizedBox(width: 10), Text("Trang chủ")]),
-          SizedBox(height: 20),
-          Row(children: [Icon(Icons.search), SizedBox(width: 10), Text("Tìm kiếm")]),
-          SizedBox(height: 20),
-          Row(children: [Icon(Icons.explore), SizedBox(width: 10), Text("Khám phá")]),
-          SizedBox(height: 20),
-          Row(children: [Icon(Icons.message), SizedBox(width: 10), Text("Tin nhắn")]),
+        children: [
+          const Text("TrustMe",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 30),
+          buildItem(Icons.home, "Trang chủ", 0),
+          buildItem(Icons.people, "Bạn bè", 1),
+          buildItem(Icons.add_box, "Đăng bài", 2),
+          buildItem(Icons.video_library, "Reels", 3),
+          buildItem(Icons.person, "Cá nhân", 4),
         ],
       ),
     );
   }
 }
+
+/// ===== RIGHT PANEL =====
 class SuggestPanel extends StatelessWidget {
   const SuggestPanel({super.key});
 
@@ -147,74 +308,18 @@ class SuggestPanel extends StatelessWidget {
       width: 300,
       padding: const EdgeInsets.all(20),
       child: Column(
-        children: [
-          const Text("Gợi ý cho bạn",
+        children: const [
+          Text("Gợi ý cho bạn",
               style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-
+          SizedBox(height: 10),
           ListTile(
             leading: CircleAvatar(),
             title: Text("Phuong"),
-            trailing: Text("Theo dõi", style: TextStyle(color: Colors.blue)),
+            trailing:
+            Text("Theo dõi", style: TextStyle(color: Colors.blue)),
           ),
         ],
       ),
-    );
-  }
-}
-class BottomNav extends StatefulWidget {
-  const BottomNav({super.key});
-
-  @override
-  State<BottomNav> createState() => _BottomNavState();
-}
-
-class _BottomNavState extends State<BottomNav> {
-  int currentIndex = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    return BottomNavigationBar(
-      currentIndex: currentIndex,
-
-      backgroundColor: Colors.black,
-      selectedItemColor: Colors.white,
-      unselectedItemColor: Colors.grey,
-
-      type: BottomNavigationBarType.fixed,
-      showSelectedLabels: false,
-      showUnselectedLabels: false,
-
-      onTap: (index) {
-        setState(() {
-          currentIndex = index;
-        });
-      },
-
-      items: [
-        BottomNavigationBarItem(
-          icon: Icon(
-            currentIndex == 0 ? Icons.home : Icons.home_outlined,
-          ),
-          label: "",
-        ),
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.search),
-          label: "",
-        ),
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.add_box),
-          label: "",
-        ),
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.video_library),
-          label: "",
-        ),
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.person),
-          label: "",
-        ),
-      ],
     );
   }
 }

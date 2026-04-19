@@ -1,7 +1,9 @@
-import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/firestore_service.dart';
+import '../services/storage_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -11,151 +13,160 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  Map profile = {};
-  bool isLoading = true;
-  String error = "";
+  final db = FirestoreService();
+  final storage = StorageService();
+  final picker = ImagePicker();
 
-  @override
-  void initState() {
-    super.initState();
-    fetchProfile();
-  }
+  Future<void> changeAvatar() async {
+    final picked = await picker.pickImage(source: ImageSource.gallery);
 
-  Future fetchProfile() async {
-    try {
-      final url = kIsWeb
-          ? "http://localhost:3000/api/profile"   // 🌐 WEB
-          : "http://10.0.2.2:3000/api/profile";   // 📱 ANDROID
+    if (picked != null) {
+      try {
+        final bytes = await picked.readAsBytes();
+        final user = FirebaseAuth.instance.currentUser;
 
-      final res = await http.get(Uri.parse(url));
+        final url =
+        await storage.uploadAvatarBytes(bytes, user!.uid);
 
-      print("PROFILE URL: $url");
-      print("STATUS: ${res.statusCode}");
+        await db.updateAvatar(url);
 
-      if (res.statusCode == 200) {
-        setState(() {
-          profile = json.decode(res.body);
-          isLoading = false;
-        });
-      } else {
-        setState(() {
-          error = "Server lỗi: ${res.statusCode}";
-          isLoading = false;
-        });
+        setState(() {});
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Lỗi avatar: $e")),
+        );
       }
-    } catch (e) {
-      setState(() {
-        error = "Không kết nối được backend";
-        isLoading = false;
-      });
-      print(e);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 800;
-    final textColor = isMobile ? Colors.white : Colors.black;
-    final bgColor = isMobile ? Colors.black : Colors.white;
+    final user = FirebaseAuth.instance.currentUser;
 
-    return Container(
-      color: bgColor,
-      child: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : error.isNotEmpty
-          ? Center(
-        child: Text(
-          error,
-          style: const TextStyle(color: Colors.red),
-        ),
-      )
-          : SingleChildScrollView(
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text("Not logged in")),
+      );
+    }
 
-            /// AVATAR
-            CircleAvatar(
-              radius: 50,
-              backgroundImage: NetworkImage(profile["avatar"] ?? ""),
-            ),
+    return Scaffold(
+      appBar: AppBar(title: const Text("Profile")),
+      body: FutureBuilder(
+        future: db.getProfile(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-            const SizedBox(height: 10),
+          final data =
+          snapshot.data!.data() as Map<String, dynamic>;
 
-            /// NAME
-            Text(
-              profile["name"] ?? "",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: textColor,
+          return Column(
+            children: [
+              const SizedBox(height: 20),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  GestureDetector(
+                    onTap: changeAvatar,
+                    child: CircleAvatar(
+                      radius: 40,
+                      backgroundImage: (data["avatar"] != null &&
+                          data["avatar"].toString().isNotEmpty)
+                          ? NetworkImage(data["avatar"])
+                          : null,
+                      child: (data["avatar"] == null ||
+                          data["avatar"] == "")
+                          ? const Icon(Icons.person, size: 40)
+                          : null,
+                    ),
+                  ),
+
+                  StreamBuilder(
+                    stream: db.getPosts(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return _stat("0", "Posts");
+                      }
+
+                      final count = snapshot.data!.docs
+                          .where((d) => d["userId"] == user.uid)
+                          .length;
+
+                      return _stat(count.toString(), "Posts");
+                    },
+                  ),
+
+                  _stat(data["followers"].toString(), "Followers"),
+                  _stat(data["following"].toString(), "Following"),
+                ],
               ),
-            ),
 
-            const SizedBox(height: 5),
+              const SizedBox(height: 10),
 
-            /// BIO
-            Text(
-              profile["bio"] ?? "",
-              style: TextStyle(color: textColor),
-            ),
+              Text(data["name"],
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold)),
+              Text(data["bio"] ?? ""),
 
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            /// STATS
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                buildStat("Posts", profile["posts"], textColor),
-                buildStat("Followers", profile["followers"], textColor),
-                buildStat("Following", profile["following"], textColor),
-              ],
-            ),
+              Expanded(
+                child: StreamBuilder(
+                  stream: db.getPosts(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(
+                          child: CircularProgressIndicator());
+                    }
 
-            const SizedBox(height: 20),
+                    final posts = snapshot.data!.docs
+                        .where((d) => d["userId"] == user.uid)
+                        .toList();
 
-            /// BUTTON
-            ElevatedButton(
-              onPressed: () {},
-              child: const Text("Edit Profile"),
-            ),
+                    if (posts.isEmpty) {
+                      return const Center(
+                          child: Text("No posts yet"));
+                    }
 
-            const SizedBox(height: 20),
+                    return GridView.builder(
+                      gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        crossAxisSpacing: 2,
+                        mainAxisSpacing: 2,
+                      ),
+                      itemCount: posts.length,
+                      itemBuilder: (context, index) {
+                        final post = posts[index].data()
+                        as Map<String, dynamic>;
 
-            /// GRID POSTS FAKE
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: 6,
-              gridDelegate:
-              const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
+                        return Image.network(
+                          post["image"],
+                          fit: BoxFit.cover,
+                          errorBuilder: (c, e, s) =>
+                          const Icon(Icons.broken_image),
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
-              itemBuilder: (context, index) {
-                return Image.network(
-                  "https://picsum.photos/200?random=$index",
-                  fit: BoxFit.cover,
-                );
-              },
-            )
-          ],
-        ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget buildStat(String label, dynamic value, Color color) {
+  Widget _stat(String n, String label) {
     return Column(
       children: [
-        Text(
-          "$value",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-            color: color,
-          ),
-        ),
-        Text(label, style: TextStyle(color: color)),
+        Text(n,
+            style:
+            const TextStyle(fontWeight: FontWeight.bold)),
+        Text(label),
       ],
     );
   }

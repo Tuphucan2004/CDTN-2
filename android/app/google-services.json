@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "755578397573",
+    "project_id": "trustme-620f1",
+    "storage_bucket": "trustme-620f1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:755578397573:android:71c81c4b804baf6b5e9aec",
+        "android_client_info": {
+          "package_name": "com.example.trustme_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCjKCTCvBBDuWsgwAhHYRSTO9MDa2AG1tY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

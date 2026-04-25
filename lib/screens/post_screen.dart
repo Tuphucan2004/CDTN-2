@@ -20,7 +20,8 @@ class _PostScreenState extends State<PostScreen> {
   final picker = ImagePicker();
 
   Future<void> pickImage() async {
-    final picked = await picker.pickImage(source: ImageSource.gallery);
+    final picked =
+    await picker.pickImage(source: ImageSource.gallery);
 
     if (picked != null) {
       final bytes = await picked.readAsBytes();
@@ -32,28 +33,36 @@ class _PostScreenState extends State<PostScreen> {
   }
 
   Future<void> post() async {
-    if (imageBytes == null || caption.text.trim().isEmpty) {
+    // ❗ CHỈ CHẶN nếu cả 2 đều rỗng
+    if (imageBytes == null &&
+        caption.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Chọn ảnh + nhập caption")),
+        const SnackBar(content: Text("Nhập caption hoặc chọn ảnh")),
       );
       return;
     }
 
     try {
-      final imageUrl =
-      await storage.uploadPostImageBytes(imageBytes!);
+      String imageUrl = "";
 
-      await db.createPost(imageUrl, caption.text.trim());
+      // ✅ Nếu có ảnh thì upload
+      if (imageBytes != null) {
+        imageUrl =
+        await storage.uploadPostImageBytes(imageBytes!);
+      }
+
+      await db.createPost(
+        imageUrl, // có thể là ""
+        caption.text.trim(),
+      );
 
       if (!mounted) return;
 
-      Navigator.of(context).pop();
+      Navigator.pop(context);
 
-      Future.microtask(() {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Đăng bài thành công")),
-        );
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Đăng bài thành công")),
+      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Lỗi: $e")),
@@ -95,7 +104,9 @@ class _PostScreenState extends State<PostScreen> {
                     : Image.memory(imageBytes!, fit: BoxFit.cover),
               ),
             ),
+
             const SizedBox(height: 15),
+
             TextField(
               controller: caption,
               maxLines: 3,

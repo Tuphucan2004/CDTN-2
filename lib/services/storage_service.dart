@@ -38,7 +38,7 @@ class StorageService {
         throw Exception("Upload failed");
       }
     } catch (e) {
-      print("🔥 UPLOAD POST ERROR: $e");
+      print(" UPLOAD POST ERROR: $e");
       rethrow;
     }
   }
@@ -50,7 +50,7 @@ class StorageService {
 
       final ref = storage.ref().child(fileName);
 
-      print("🚀 UPLOADING AVATAR: $fileName");
+      print(" UPLOADING AVATAR: $fileName");
 
       final metadata = SettableMetadata(
         contentType: "image/jpeg",
@@ -76,6 +76,28 @@ class StorageService {
       }
     } catch (e) {
       print(" UPLOAD AVATAR ERROR: $e");
+      rethrow;
+    }
+  }
+
+  // ===== UPLOAD CHAT IMAGE =====
+  Future<String> uploadChatImageBytes(Uint8List bytes, String chatId) async {
+    try {
+      final fileName = "chat_images/$chatId/${DateTime.now().millisecondsSinceEpoch}.jpg";
+      final ref = storage.ref().child(fileName);
+
+      final metadata = SettableMetadata(contentType: "image/jpeg");
+      final uploadTask = ref.putData(bytes, metadata);
+
+      final snapshot = await uploadTask;
+
+      if (snapshot.state == TaskState.success) {
+        return await snapshot.ref.getDownloadURL();
+      } else {
+        throw Exception("Upload chat image failed");
+      }
+    } catch (e) {
+      print(" UPLOAD CHAT IMAGE ERROR: $e");
       rethrow;
     }
   }

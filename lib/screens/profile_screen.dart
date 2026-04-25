@@ -2,11 +2,15 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../services/firestore_service.dart';
 import '../services/storage_service.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final String? uid; // 👈 THÊM
+
+  const ProfileScreen({super.key, this.uid});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -41,18 +45,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final currentUser = FirebaseAuth.instance.currentUser;
 
-    if (user == null) {
-      return const Scaffold(
-        body: Center(child: Text("Not logged in")),
-      );
-    }
+    final userId =
+        widget.uid ?? currentUser!.uid; // 👈 lấy user khác nếu có
+
+    final isMe = currentUser?.uid == userId;
 
     return Scaffold(
       appBar: AppBar(title: const Text("Profile")),
-      body: FutureBuilder(
-        future: db.getProfile(),
+      body: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        future: FirebaseFirestore.instance
+            .collection("users")
+            .doc(userId)
+            .get(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -68,8 +74,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
+                  // 👤 AVATAR
                   GestureDetector(
-                    onTap: changeAvatar,
+                    onTap: isMe ? changeAvatar : null,
                     child: CircleAvatar(
                       radius: 40,
                       backgroundImage: (data["avatar"] != null &&
@@ -83,6 +90,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
 
+                  // POSTS
                   StreamBuilder(
                     stream: db.getPosts(),
                     builder: (context, snapshot) {
@@ -91,27 +99,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       }
 
                       final count = snapshot.data!.docs
-                          .where((d) => d["userId"] == user.uid)
+                          .where((d) => d["userId"] == userId)
                           .length;
 
                       return _stat(count.toString(), "Posts");
                     },
                   ),
 
-                  _stat(data["followers"].toString(), "Followers"),
-                  _stat(data["following"].toString(), "Following"),
+                  // 👥 FRIEND COUNT
+                  StreamBuilder<int>(
+                    stream: db.getFriendCount(userId),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return _stat("0", "Friends");
+                      }
+
+                      return _stat(
+                          snapshot.data.toString(), "Friends");
+                    },
+                  ),
                 ],
               ),
 
               const SizedBox(height: 10),
 
-              Text(data["name"],
+              Text(data["name"] ?? "User",
                   style: const TextStyle(
                       fontWeight: FontWeight.bold)),
               Text(data["bio"] ?? ""),
 
               const SizedBox(height: 20),
 
+              // POSTS GRID
               Expanded(
                 child: StreamBuilder(
                   stream: db.getPosts(),
@@ -122,7 +141,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     }
 
                     final posts = snapshot.data!.docs
-                        .where((d) => d["userId"] == user.uid)
+                        .where((d) => d["userId"] == userId)
                         .toList();
 
                     if (posts.isEmpty) {
